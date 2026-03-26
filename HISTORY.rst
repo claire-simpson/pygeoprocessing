@@ -26,6 +26,11 @@ Unreleased Changes
 * Fixed a bug where ``convolve_2d`` was not handling ``nan`` NoData
   values correctly.
   https://github.com/natcap/pygeoprocessing/issues/473
+* Fixed a bug where ``align_and_resize_raster_stack`` would pad rasters that
+  were smaller than the target extent and didn't have a defined NoData value
+  with 0s. The function will now automatically assign an appropriate NoData
+  value to any input raster without one defined.
+  https://github.com/natcap/pygeoprocessing/issues/476
 
 2.4.10 (2026-01-13)
 -------------------
