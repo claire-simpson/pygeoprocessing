@@ -1102,6 +1102,49 @@ def align_and_resize_raster_stack(
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
 
+    # Set a nodata value if the raster does not have one defined. This
+    # ensures that a raster that is smaller than the target extent will
+    # not get filled with 0s that could be confused with real data.
+    # We do this by creating a temporary VRT with an explicit nodata value
+    # for rasters that are missing one.
+    temp_working_dir_nodata = None
+    fixed_base_raster_path_list = list(base_raster_path_list)
+
+    rasters_missing_nodata = []
+    for raster_info, base_path in zip(raster_info_list, base_raster_path_list):
+        nodata_list = raster_info.get('nodata', [])
+        band_nodata = nodata_list[0] if nodata_list else None
+        if band_nodata is None:
+            rasters_missing_nodata.append(base_path)
+
+    if rasters_missing_nodata:
+        temp_working_dir_nodata = tempfile.mkdtemp(dir=working_dir, prefix='align-nodata-')
+
+        for index, (raster_info, base_path) in enumerate(
+                zip(raster_info_list, base_raster_path_list)):
+            nodata_list = raster_info.get('nodata', [])
+            band_nodata = nodata_list[0] if nodata_list else None
+            if band_nodata is not None:
+                continue
+
+            raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
+            chosen_nodata = choose_nodata(raster_info['numpy_type'])
+
+            vrt_path = os.path.join(temp_working_dir_nodata,
+                                    f'input_with_nodata_{index}.vrt')
+            vrt = gdal.Translate(vrt_path, raster, format='VRT',
+                                 noData=chosen_nodata)
+            vrt = None
+            band = None
+            raster = None
+
+            fixed_base_raster_path_list[index] = vrt_path
+
+            LOGGER.warning(
+                "Input raster %s had no defined nodata value. Using "
+                "%s as nodata in a temporary VRT before warping.",
+                base_path, chosen_nodata)
+
     if mask_options:
         # Create a warped VRT.
         # This allows us to cheaply figure out the dimensions, projection, etc.
@@ -1110,7 +1153,7 @@ def align_and_resize_raster_stack(
         temp_working_dir = tempfile.mkdtemp(dir=working_dir, prefix='mask-')
         warped_vrt = os.path.join(temp_working_dir, 'warped.vrt')
         warp_raster(
-            base_raster_path=base_raster_path_list[0],
+            base_raster_path=fixed_base_raster_path_list[0],
             target_pixel_size=target_pixel_size,
             target_raster_path=warped_vrt,
             resample_method='near',
@@ -1142,7 +1185,7 @@ def align_and_resize_raster_stack(
                       else None))
 
     for index, (base_path, target_path, resample_method) in enumerate(zip(
-            base_raster_path_list, target_raster_path_list,
+            fixed_base_raster_path_list, target_raster_path_list,
             resample_method_list)):
         warp_raster(
             base_path, target_pixel_size, target_path, resample_method,
@@ -1160,6 +1203,8 @@ def align_and_resize_raster_stack(
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
+    if rasters_missing_nodata:
+        shutil.rmtree(temp_working_dir_nodata, ignore_errors=True)
     if mask_options:
         shutil.rmtree(temp_working_dir, ignore_errors=True)
 

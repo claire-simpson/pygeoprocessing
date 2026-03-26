@@ -2585,6 +2585,38 @@ class TestGeoprocessing(unittest.TestCase):
         numpy.testing.assert_array_equal(
             numpy.ones((4, 4), pixel_a_matrix.dtype), target_array)
 
+    def test_align_and_resize_raster_stack_no_defined_nodata(self):
+        """Test that align and resize sets nodata if not defined."""
+        arr = numpy.arange(16).reshape(4, 4)
+        print(arr)
+
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(26910)
+        input_raster_path = os.path.join(self.workspace_dir, 'test.tif')
+        pygeoprocessing.numpy_array_to_raster(
+            arr.astype(numpy.int16), target_nodata=None,
+            pixel_size=(10, -10), origin=(0, 0),
+            projection_wkt=srs.ExportToWkt(),
+            target_path=input_raster_path)
+
+        output_raster_path = os.path.join(self.workspace_dir, 'test_align.tif')
+        pygeoprocessing.align_and_resize_raster_stack(
+            [input_raster_path],
+            [output_raster_path],
+            ['near'],
+            (10, -10),
+            [-10, -20, 20, 0],
+            # this target bounding box extends beyond extent of input raster
+            # (input raster's bbox is [0, -40, 40, 0])
+            base_vector_path_list=None,
+            raster_align_index=None, mask_options=None,
+            vector_mask_options=None)
+
+        output_array = pygeoprocessing.raster_to_numpy_array(
+            output_raster_path)
+        expected_output_array = numpy.array([[32767, 0, 1], [32767, 4, 5]])
+        numpy.testing.assert_allclose(output_array, expected_output_array)
+
     def test_raster_calculator(self):
         """PGP.geoprocessing: raster_calculator identity test."""
         pixel_matrix = numpy.ones((5, 5), numpy.int16)
