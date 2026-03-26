@@ -2585,10 +2585,9 @@ class TestGeoprocessing(unittest.TestCase):
         numpy.testing.assert_array_equal(
             numpy.ones((4, 4), pixel_a_matrix.dtype), target_array)
 
-    def test_align_and_resize_raster_stack_no_defined_nodata(self):
-        """Test that align and resize sets nodata if not defined."""
+    def test_align_and_resize_raster_stack_no_set_nodata_multiband(self):
+        """Test align_and_resize sets nodata if not defined for input."""
         arr = numpy.arange(16).reshape(4, 4)
-        print(arr)
 
         srs = osr.SpatialReference()
         srs.ImportFromEPSG(26910)
@@ -2605,17 +2604,58 @@ class TestGeoprocessing(unittest.TestCase):
             [output_raster_path],
             ['near'],
             (10, -10),
-            [-10, -20, 20, 0],
+            [-10, -20, 20, 0])
             # this target bounding box extends beyond extent of input raster
             # (input raster's bbox is [0, -40, 40, 0])
-            base_vector_path_list=None,
-            raster_align_index=None, mask_options=None,
-            vector_mask_options=None)
 
         output_array = pygeoprocessing.raster_to_numpy_array(
             output_raster_path)
         expected_output_array = numpy.array([[32767, 0, 1], [32767, 4, 5]])
         numpy.testing.assert_allclose(output_array, expected_output_array)
+
+    def test_align_and_resize_raster_stack_mixed_nodata_warns(self):
+        """Test warning if 1 band in multiband raster has no defined nodata.
+
+        Test that a warning is raised if a multiband raster with one band
+        that has a defined nodata value and one band that does not have a
+        defined nodata value is passed to align_and_resize_raster_stack.
+        """
+
+        raster_path = os.path.join(self.workspace_dir, 'multi.tif')
+        driver = gdal.GetDriverByName('GTiff')
+        raster = driver.Create(raster_path, 4, 4, 2, gdal.GDT_Int16)
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(26910)
+        raster.SetProjection(srs.ExportToWkt())
+        raster.SetGeoTransform((0, 10, 0, 0, 0, -10))
+        arr = numpy.arange(16).reshape(4, 4)
+        band1 = raster.GetRasterBand(1)
+        band2 = raster.GetRasterBand(2)
+        band1.WriteArray(arr)
+        band2.WriteArray(arr)
+        raster = None
+
+        vrt_path = os.path.join(self.workspace_dir, 'multi.vrt')
+        gdal.BuildVRT(vrt_path, [raster_path])
+        vrt = gdal.Open(vrt_path, gdal.GA_Update)
+        vrt.GetRasterBand(2).SetNoDataValue(-9999)
+        # leave band 1 without nodata
+        vrt = None
+
+        output_raster_path = os.path.join(self.workspace_dir, 'out.tif')
+        with self.assertLogs(level='WARNING') as cm:
+            pygeoprocessing.align_and_resize_raster_stack(
+                [vrt_path],
+                [output_raster_path],
+                ['near'],
+                (10, -10),
+                [-10, -20, 20, 0]
+            )
+
+        self.assertTrue(
+            any("some bands with a defined nodata value and some bands without"
+                in msg for msg in cm.output),
+            f"Expected warning not found in logs: {cm.output}")
 
     def test_raster_calculator(self):
         """PGP.geoprocessing: raster_calculator identity test."""
