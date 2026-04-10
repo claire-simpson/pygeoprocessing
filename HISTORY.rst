@@ -1,8 +1,8 @@
 Release History
 ===============
 
-Unreleased Changes
-------------------
+2.4.11 (2026-04-10)
+-------------------
 * The Natural Capital Project changed its name to the Natural Capital Alliance.
   References to the old name and website domain have been updated to reflect
   this change.
