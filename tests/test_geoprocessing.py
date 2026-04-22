@@ -2653,7 +2653,7 @@ class TestGeoprocessing(unittest.TestCase):
             )
 
         self.assertTrue(
-            any("some bands with a defined nodata value and some bands without"
+            any("One or more bands"
                 in msg for msg in cm.output),
             f"Expected warning not found in logs: {cm.output}")
 
