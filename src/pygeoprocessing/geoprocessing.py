@@ -1102,44 +1102,6 @@ def align_and_resize_raster_stack(
                 n_pixels * align_pixel_size[index] +
                 align_bounding_box[index])
 
-    # Set a nodata value if the raster does not have one defined. This
-    # ensures that a raster that is smaller than the target extent will
-    # not get filled with 0s that could be confused with real data.
-    # We do this by creating a temporary VRT with an explicit nodata value
-    # for rasters that are missing one.
-    fixed_base_raster_path_list = list(base_raster_path_list)
-    temp_working_dir_nodata = None
-    for index, (raster_info, base_path) in enumerate(
-                zip(raster_info_list, base_raster_path_list)):
-        nodata_list = raster_info['nodata']
-        if None in nodata_list:
-            if temp_working_dir_nodata is None:
-                temp_working_dir_nodata = tempfile.mkdtemp(dir=working_dir,
-                                               prefix='align-nodata-')
-            raster = gdal.OpenEx(base_path, gdal.OF_RASTER)
-            chosen_nodata = choose_nodata(raster_info['numpy_type'])
-
-            if set(nodata_list) != {None}:
-                LOGGER.warning(
-                    "Input raster %s has some bands with a defined nodata "
-                    "value and some bands without. Setting %s as the nodata "
-                    "value for all bands in a temporary VRT before aligning "
-                    "and resizing.", base_path, chosen_nodata)
-            else:
-                LOGGER.warning(
-                    "Input raster %s has no defined nodata value. Setting "
-                    "%s as nodata in a temporary VRT before aligning and "
-                    "resizing.", base_path, chosen_nodata)
-
-            vrt_path = os.path.join(temp_working_dir_nodata,
-                                    f'input_with_nodata_{index}.vrt')
-            vrt = gdal.Translate(vrt_path, raster, format='VRT',
-                                 noData=chosen_nodata)
-            vrt = None
-            raster = None
-
-            fixed_base_raster_path_list[index] = vrt_path
-
     if mask_options:
         # Create a warped VRT.
         # This allows us to cheaply figure out the dimensions, projection, etc.
@@ -1148,7 +1110,7 @@ def align_and_resize_raster_stack(
         temp_working_dir = tempfile.mkdtemp(dir=working_dir, prefix='mask-')
         warped_vrt = os.path.join(temp_working_dir, 'warped.vrt')
         warp_raster(
-            base_raster_path=fixed_base_raster_path_list[0],
+            base_raster_path=base_raster_path_list[0],
             target_pixel_size=target_pixel_size,
             target_raster_path=warped_vrt,
             resample_method='near',
@@ -1180,7 +1142,7 @@ def align_and_resize_raster_stack(
                       else None))
 
     for index, (base_path, target_path, resample_method) in enumerate(zip(
-            fixed_base_raster_path_list, target_raster_path_list,
+            base_raster_path_list, target_raster_path_list,
             resample_method_list)):
         warp_raster(
             base_path, target_pixel_size, target_path, resample_method,
@@ -1198,8 +1160,6 @@ def align_and_resize_raster_stack(
 
     LOGGER.info("aligned all %d rasters.", n_rasters)
 
-    if temp_working_dir_nodata:
-        shutil.rmtree(temp_working_dir_nodata, ignore_errors=True)
     if mask_options:
         shutil.rmtree(temp_working_dir, ignore_errors=True)
 
@@ -2623,6 +2583,13 @@ def warp_raster(
     base_raster_info = get_raster_info(base_raster_path)
     if target_projection_wkt is None:
         target_projection_wkt = base_raster_info['projection_wkt']
+    if None in base_raster_info['nodata']:
+        target_nodata = choose_nodata(base_raster_info['numpy_type'])
+        LOGGER.warning(f'One or more bands in {base_raster_path} do not have '
+                       'a designated NoData value. The output warped raster '
+                       f'will be assigned a NoData value of {target_nodata}')
+    else:
+        target_nodata = base_raster_info['nodata'][0]
 
     if vector_mask_options is not None:
         warnings.warn('The vector_mask_options parameter is deprecated and '
@@ -2736,6 +2703,7 @@ def warp_raster(
         outputBoundsSRS=target_projection_wkt,
         srcSRS=base_projection_wkt,
         dstSRS=target_projection_wkt,
+        dstNodata=target_nodata,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
         overviewLevel=use_overview_level,
