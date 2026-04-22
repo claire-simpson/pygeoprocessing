@@ -2591,16 +2591,16 @@ def warp_raster(
     base_raster_info = get_raster_info(base_raster_path)
     if target_projection_wkt is None:
         target_projection_wkt = base_raster_info['projection_wkt']
-    source_nodata = " ".join(str(x) for x in base_raster_info['nodata'])
     if None in base_raster_info['nodata']:
-        target_nodata = choose_nodata(base_raster_info['numpy_type'])
+        pgp_nodata = choose_nodata(base_raster_info['numpy_type'])
+        tgt_nodata = " ".join(
+            str(pgp_nodata) for x in range(len(base_raster_info['nodata'])))
         LOGGER.warning(f'One or more bands in {base_raster_path} do not have '
                        'a designated NoData value. All bands in the output '
                        'warped raster will be assigned a NoData value '
-                       f'of {target_nodata}.')
+                       f'of {tgt_nodata}.')
     else:
-        target_nodata = " ".join(str(x) for x in base_raster_info['nodata'])
-
+        tgt_nodata = " ".join(str(x) for x in base_raster_info['nodata'])
     if vector_mask_options is not None:
         warnings.warn('The vector_mask_options parameter is deprecated and '
                       'will be removed in a future release of '
@@ -2713,8 +2713,7 @@ def warp_raster(
         outputBoundsSRS=target_projection_wkt,
         srcSRS=base_projection_wkt,
         dstSRS=target_projection_wkt,
-        srcNodata=source_nodata,
-        dstNodata=target_nodata,
+        dstNodata=tgt_nodata,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
         overviewLevel=use_overview_level,
