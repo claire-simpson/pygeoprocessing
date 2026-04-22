@@ -823,6 +823,10 @@ def align_and_resize_raster_stack(
     clipping or resizing the rasters to intersected, unioned, or equivocated
     bounding boxes of all the raster and vector input.
 
+    Note: If any bands in rasters in ``base_raster_path_list`` do not have a
+    defined NoData value, a suitable value will be chosen for all bands in
+    that raster based on its datatype.
+
     Args:
         base_raster_path_list (sequence): a sequence of base raster paths that
             will be transformed and will be used to determine the target
@@ -2485,6 +2489,10 @@ def warp_raster(
         osr_axis_mapping_strategy=DEFAULT_OSR_AXIS_MAPPING_STRATEGY):
     """Resize/resample raster to desired pixel size, bbox and projection.
 
+    Note: If any band in ``base_raster_path`` does not have a defined NoData
+    value, a suitable value will be chosen for all bands based on the
+    raster's datatype.
+
     Args:
         base_raster_path (string): path to base raster. Paths may use any
             GDAL-supported scheme, including virtual file system /vsi schemes.
@@ -2583,13 +2591,15 @@ def warp_raster(
     base_raster_info = get_raster_info(base_raster_path)
     if target_projection_wkt is None:
         target_projection_wkt = base_raster_info['projection_wkt']
+    source_nodata = " ".join(str(x) for x in base_raster_info['nodata'])
     if None in base_raster_info['nodata']:
         target_nodata = choose_nodata(base_raster_info['numpy_type'])
         LOGGER.warning(f'One or more bands in {base_raster_path} do not have '
-                       'a designated NoData value. The output warped raster '
-                       f'will be assigned a NoData value of {target_nodata}')
+                       'a designated NoData value. All bands in the output '
+                       'warped raster will be assigned a NoData value '
+                       f'of {target_nodata}.')
     else:
-        target_nodata = base_raster_info['nodata'][0]
+        target_nodata = " ".join(str(x) for x in base_raster_info['nodata'])
 
     if vector_mask_options is not None:
         warnings.warn('The vector_mask_options parameter is deprecated and '
@@ -2703,6 +2713,7 @@ def warp_raster(
         outputBoundsSRS=target_projection_wkt,
         srcSRS=base_projection_wkt,
         dstSRS=target_projection_wkt,
+        srcNodata=source_nodata,
         dstNodata=target_nodata,
         multithread=True if warp_options else False,
         warpOptions=warp_options,
