@@ -2188,7 +2188,15 @@ class TestGeoprocessing(unittest.TestCase):
                 in msg for msg in cm.output),
             f"Expected warning not found in logs: {cm.output}")
 
-        arr[0, 0] = 32767 # expected output has default NoData for int16
+        # check that first pixel in band 1 is still -9999 (because that band
+        # had no defined NoData)
+        actual_array = pygeoprocessing.raster_to_numpy_array(
+            output_raster_path)
+        numpy.testing.assert_allclose(actual_array, arr)
+
+        # check that first pixel in band 2 was converted to appropriate Nodata
+        # value for a int16 raster
+        arr[0, 0] = 32767
         actual_array = pygeoprocessing.raster_to_numpy_array(
             output_raster_path, 2)
         numpy.testing.assert_allclose(actual_array, arr)
